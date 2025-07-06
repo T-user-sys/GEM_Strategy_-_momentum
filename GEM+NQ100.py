@@ -1,3 +1,4 @@
+
 import yfinance as yf
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -91,14 +92,15 @@ def main(page: ft.Page):
 
             data = {}
 
-            for ticker in gem_list :
+            # Pobieranie danych
+            for ticker in gem_list:
                 try:
                     df = yf.download(ticker, period='13mo')['Close']
                     if df.empty:
                         output_text.value += f"\nBrak danych dla: {ticker}"
                     else:
-                        data[ticker] = df                
-                
+                        data[ticker] = df
+
                 except Exception as ex:
                     output_text.value += f"\nBłąd dla {ticker}: {str(ex)}"
 
@@ -106,38 +108,60 @@ def main(page: ft.Page):
                 output_text.value += "\nNie udało się pobrać danych dla żadnego tickera."
                 page.update()
                 return
-            
-            lookback = 252
+
+            lookback = 252  # 252 dni = około rok sesyjny
+            momentum_data = pd.DataFrame()
+
+            # Obliczenie momentum jako procentowa zmiana ceny względem 252 dni temu
             momentum_data = pd.DataFrame()
 
             for ticker, df in data.items():
-                momentum = df.pct_change(periods=lookback)
+                if len(df) < 2:
+                    continue  # pomiń jeśli za mało danych
+                momentum = df / df.iloc[0] - 1
                 momentum_data[ticker] = momentum
 
             momentum_data.dropna(inplace=True)
+
 
             if momentum_data.empty:
                 output_text.value += "\nBrak wystarczających danych do obliczeń momentum."
                 page.update()
                 return
-            
+
+            # Rysowanie wykresu
             plt.figure(figsize=(10, 5))
+
             for ticker in momentum_data.columns:
                 plt.plot(momentum_data.index, momentum_data[ticker], label=ticker)
+
             plt.title("Momentum (252-dniowe zmiany procentowe)")
             plt.xlabel("Data")
             plt.ylabel("Momentum (zmiana %)")
+
+            # Dynamiczne dopasowanie zakresu Y z centralną osią
+            y_min = momentum_data.min().min()
+            y_max = momentum_data.max().max()
+            margin = 0.05 * max(abs(y_min), abs(y_max))  # 5% marginesu
+            y_limit = max(abs(y_min), abs(y_max)) + margin
+
+            plt.ylim(-y_limit, y_limit)
+            plt.axhline(0, color='black', linewidth=1, linestyle='--')
+
+            # Rotacja dat na osi X
+            plt.xticks(rotation=45)
+
             plt.legend()
             plt.grid(True)
 
-            # Zapisz wykres do pamięci RAM jako PNG
+            # Zapis do bufora
             buf = BytesIO()
             plt.tight_layout()
             plt.savefig(buf, format="png")
             plt.close()
             buf.seek(0)
 
-            # Zakoduj obraz do base64
+            # Zakoduj obraz do base64 i wyświetl go
             img_base64 = base64.b64encode(buf.read()).decode("utf-8")
             img_control = ft.Image(src_base64=img_base64, expand=True)
 
@@ -150,6 +174,7 @@ def main(page: ft.Page):
 
 
 
+
     calculate_button = ft.ElevatedButton(
         text="Submit",
         width=250,
@@ -157,7 +182,7 @@ def main(page: ft.Page):
     )
 
     GEM_button = ft.ElevatedButton(
-        text="GEM Statery",
+        text="GEM Strategy",
         width=250,
         on_click = Gem_strategy
     )
